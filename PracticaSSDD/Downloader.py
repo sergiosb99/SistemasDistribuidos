@@ -60,35 +60,35 @@ class DownloaderI (TrawlNet.Downloader):
     def addDownloadTask(self, link, current = None):
         #print("Petición de descarga: %s" %link, flush=True)
         print("Peticion de descarga: %s" %link)
-		sys.stdout.flush()
-		output_file = download_mp3(link) 
+        sys.stdout.flush()
+        descarga = download_mp3(link) 
         print("Archivo descargado: %s" %output_file)
-		return output_file
+        return descarga
 
 # Servidor
 class Downloader (Ice.Application):
     def run(self, args):
-		broker = self.communicator() 
-		sirviente = DownloaderI() # Se crea una instancia del sirviente
+        broker = self.communicator() 
+        sirviente = DownloaderI() # Se crea una instancia del sirviente
 		# Se crea el adaptador de objetos
-		adapter = broker.createObjectAdapter("DownloaderAdapter") # El adaptador requiere un endpoint, un host y un puerto, están en server.config
-		proxy = adapter.addWithUUID(sirviente) # UUID crea una secuencia unica
+        adapter = broker.createObjectAdapter("DownloaderAdapter") # El adaptador requiere un endpoint, un host y un puerto, están en server.config
+        proxy = adapter.addWithUUID(sirviente) # UUID crea una secuencia unica
+		
 		#print(str(proxy), flush = True)
-		print(proxy)
-		sys.stdout.flush()
+        print(proxy)
+        sys.stdout.flush()
 
-		adapter.activate() # El adaptador se ejecuta en otro hilo
+        adapter.activate() # El adaptador se ejecuta en otro hilo
 		
 		#A partir de este momento el servidor escucha peticiones
 		
-		self.shutdownOnInterrupt() # Ctrl + C, fin de la aplicación (SIGQUIT)
-		broker.waitForShutdown() # Bloquea el hilo principal hasta que el comunicador sea terminado
+        self.shutdownOnInterrupt() # Ctrl + C, fin de la aplicación (SIGQUIT)
+        broker.waitForShutdown() # Bloquea el hilo principal hasta que el comunicador sea terminado
 
-		return 0
-#main 
-server = Server()
-sys.exit(server.main(sys.argv))
-
+        return 0
+downloader = Downloader()
+sys.exit(downloader.main(sys.argv))
+		
 
 
 
