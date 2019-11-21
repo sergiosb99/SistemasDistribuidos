@@ -13,6 +13,7 @@ class OrchestratorI (TrawlNet.Orchestrator):
             print("No se conseguido asignar la descarga a un downloader")
             return 1
         else:
+            print("Peticion de descarga: %s" %link)
             return self.downloader.addDownloadTask(link)
 
 class Orchestrator (Ice.Application):
@@ -20,25 +21,22 @@ class Orchestrator (Ice.Application):
         
         broker = self.communicator()
 
-        proxyDownloader = broker.stringToProxy(argv[1]) # Se obtiene un objeto proxy
+        proxyDownloader = broker.stringToProxy(argv[1])
         downloader = TrawlNet.DownloaderPrx.checkedCast(proxyDownloader)
 
         if not downloader:
             return ValueError("Proxy invalido: %s" %argv[1])
 
-        adaptador = broker.createObjectAdapter("OrchestratorAdapter") # El adaptador requiere un endpoint, un host y un puerto, están en orchestrator.config
+        adaptador = broker.createObjectAdapter("OrchestratorAdapter")
         sirviente = OrchestratorI()
         sirviente.downloader = downloader
         proxy = adaptador.addWithUUID(sirviente)
         print(proxy)
         sys.stdout.flush()
-
-        adaptador.activate() # El adaptador se ejecuta en otro hilo
-		
-		#A partir de este momento el servidor escucha peticiones
+        adaptador.activate()
 	
-        self.shutdownOnInterrupt() # Ctrl + C, fin de la aplicación (SIGQUIT)
-        broker.waitForShutdown() # Bloquea el hilo principal hasta que el comunicador sea terminado
+        self.shutdownOnInterrupt()
+        broker.waitForShutdown()
 
         return 0
 
