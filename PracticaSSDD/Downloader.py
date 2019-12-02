@@ -70,7 +70,8 @@ class Downloader(Ice.Application):
         sirviente = DownloaderI()
 
         adapter = broker.createObjectAdapter("DownloaderAdapter")
-        proxy = adapter.addWithUUID(sirviente)	
+        #proxy = adapter.addWithUUID(sirviente)
+        proxy = adapter.add(sirviente, broker.stringToIdentity("downloader1"))
         print(proxy)
         sys.stdout.flush()
         adapter.activate()

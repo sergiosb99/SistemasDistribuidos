@@ -30,14 +30,13 @@ class Orchestrator (Ice.Application):
         adaptador = broker.createObjectAdapter("OrchestratorAdapter")
         sirviente = OrchestratorI()
         sirviente.downloader = downloader
-        proxy = adaptador.addWithUUID(sirviente)
+        proxy = adaptador.add(sirviente,broker.stringToIdentity("orchestrator1"))
         print(proxy)
         sys.stdout.flush()
         adaptador.activate()
 	
         self.shutdownOnInterrupt()
         broker.waitForShutdown()
-
         return 0
 
 orchestrator = Orchestrator()
