@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import sys
-import Ice
+import Ice, IceStorm
 Ice.loadSlice('trawlnet.ice')
 import TrawlNet
 
@@ -61,23 +61,57 @@ class DownloaderI(TrawlNet.Downloader):
     def addDownloadTask(self, link, current = None):
         print("Peticion de descarga: %s" %link)
         sys.stdout.flush()
-        return download_mp3(link) 
+        fileInfo = TrawlNet.FileInfo()
+        fileInfo.name = download_mp3(link)
+        #file.hash = metodo que nos tienen que pasar
+        return fileInfo
 
 # Servidor
 class Downloader(Ice.Application):
+    def get_topic_manager(self):
+        key = 'IceStorm.TopicManager.Proxy'
+        proxy = self.communicator().propertyToProxy(key)
+        if proxy is None:
+            print("property", key,"not set")
+            return None
+        
+        print("Using IceStorm in: '%s'" % key)
+        return IceStorm.TopicManagerPrx.checkedCast(proxy)
+    
     def run(self, args):
-        broker = self.communicator() 
-        sirviente = DownloaderI()
+        ## CÓDIGO PUBLISHER
+        topic_mgr = self.get_topic_manager()
+        if not topic_mgr:
+            print('Proxy invalido')
+            return 2
+        
+        topic_name = "UpdateEvents"
+        try:
+            topic = topic_mgr.retrieve(topic_name)
+        except IceStorm.NoSuchTopic:
+            print("No such topic found, creating")
+            topic = topic_mgr.create(topic_name)
 
-        adapter = broker.createObjectAdapter("DownloaderAdapter")
-        #proxy = adapter.addWithUUID(sirviente)
-        proxy = adapter.add(sirviente, broker.stringToIdentity("downloader1"))
-        print(proxy)
+        self.publisher = topic.getPublisher()
+        self.updateEvent = TrawlNet.UpdateEventPrx.uncheckedCast(self.publisher) ## DUDAS
+    
+        #AQUI DEBERÍA DE IR EL CODIGO LLAMANDO A LA FUNCION DE LA INTERFAZ CREO     
+        self.updateEvent.newFile(hay que pasarle un fileInfo)
+
+        #NO SE SI ESTO SIGUE ASÍ
+        self.broker = self.communicator() 
+        self.sirviente = DownloaderI()
+
+        self.adapter = self.broker.createObjectAdapter("DownloaderAdapter")
+        self.proxy = self.adapter.addWithUUID(self.sirviente)
+        #self.proxy = self.adapter.add(self.sirviente, self.broker.stringToIdentity("downloader1"))
+        print(self.proxy)
         sys.stdout.flush()
-        adapter.activate()
+        self.adapter.activate()
 				
         self.shutdownOnInterrupt()
-        broker.waitForShutdown()
+        self.broker.waitForShutdown()
+        
         return 0
 
 downloader = Downloader()
