@@ -26,24 +26,22 @@ class OrchestratorEventI (TrawlNet.OrchestratorEvent):
     orchestrator = None
     def hello(self, me, current = None):
             if self.orchestrator:
-                self.orchestrator.sayhello(me)
+                self.orchestrator.saludar(me) # Por pulir
 
 class UpdateEventI (TrawlNet.UpdateEvent):   
-
-    n = 0
-
-    def write(self, message, current=None):
-        print("{0}: {1}".format(self.n, message))
-        sys.stdout.flush()
-        self.n += 1
-        
     orchestrator = None
     def newFile(self, fileInfo, current = None):
+        print("Nuevo evento registrado")
         if self.orchestrator:
             if fileInfo.hash not in self.orchestrator.files:
                 self.orchestrator.files[fileInfo.hash] = fileInfo.name
 
 class Orchestrator (Ice.Application):
+
+    def __init__(self):
+        self.files = {}
+        self.orchestrator = {}
+
     def get_topic_manager(self):
         key = 'IceStorm.TopicManager.Proxy'
         proxy = self.communicator().propertyToProxy(key)
@@ -55,11 +53,28 @@ class Orchestrator (Ice.Application):
         return IceStorm.TopicManagerPrx.checkedCast(proxy)
     
     def run(self, argv):
-        # PARTE CLIENTE 
+         
         self.broker = self.communicator()
+        # Se obtiene el proxy del Downloader al que conectarse por parametros
         self.proxyDownloader = self.broker.stringToProxy(argv[1])
         self.downloader = TrawlNet.DownloaderPrx.checkedCast(self.proxyDownloader)
         
+        ### Interfaz del orchestrator para realizar la descarga mp3
+        self.sirviente = OrchestratorI()
+        self.sirviente.downloader = self.downloader
+        
+        ### Interfaz del canal de eventos UpdateEvent
+        self.sirvienteUpdate = UpdateEventI()
+        self.sirvienteUpdate.orchestrator = self # El orchestrator soy "yo"
+        
+        # Se obtiene el adaptador
+        self.adaptador = self.broker.createObjectAdapter("OrchestratorAdapter")
+
+        # Ahora con el adaptador, conseguimos los proxys necesarios
+        self.subscriberUpdateEvent = self.adaptador.addWithUUID(self.sirvienteUpdate) # Proxy del UpdateEvent
+        self.proxyOrchestrator = self.adaptador.addWithUUID(self.sirviente) # Proxy del Orchestrator
+        
+
         if not self.downloader:
             return ValueError("Proxy invalido: %s" %argv[1])
        
@@ -69,13 +84,6 @@ class Orchestrator (Ice.Application):
             print('Proxy invalido')
             return 2
 
-        # PARTE SERVIDOR
-        self.adaptador = self.broker.createObjectAdapter("OrchestratorAdapter")
-        self.sirviente = OrchestratorI()
-        self.sirviente.downloader = self.downloader
-        self.subscriber = self.adaptador.addWithUUID(self.sirviente)
-        #self.subscriber = self.adaptador.add(self.sirviente,self.broker.stringToIdentity("orchestrator1"))
-
         topic_name = "UpdateEvents"
         qos = {}
         try:
@@ -83,14 +91,16 @@ class Orchestrator (Ice.Application):
         except IceStorm.NoSuchTopic:
             topic = topic_mgr.create(topic_name)
 
-        topic.subscribeAndGetPublisher(qos,self.subscriber)
-        print('Waiting events... %s' % self.subscriber)
+        topic.subscribeAndGetPublisher(qos,self.subscriberUpdateEvent)
+
+        # Imprimos el proxy del orquestador, lo necesita el cliente por parametros
+        print('Proxy orchestrator: %s' % self.proxyOrchestrator)
 
         self.adaptador.activate()
         self.shutdownOnInterrupt()
         self.broker.waitForShutdown()
 
-        topic.unsubscribe(self.subscriber) 
+        topic.unsubscribe(self.subscriberUpdateEvent) 
 
         return 0
 

@@ -5,6 +5,7 @@ import sys
 import Ice, IceStorm
 Ice.loadSlice('trawlnet.ice')
 import TrawlNet
+import hashlib
 
 ####################### CODIGO CAMPUS #######################
 
@@ -18,12 +19,16 @@ except ImportError:
 
 class NullLogger:
     def debug(self, msg):
+        #print(msg)
         pass
 
     def warning(self, msg):
+        #print(msg)
         pass
 
+
     def error(self, msg):
+        #print(msg)
         pass
 
 _YOUTUBEDL_OPTS_ = {
@@ -58,12 +63,18 @@ def download_mp3(url, destination='./'):
 
 # Sirviente
 class DownloaderI(TrawlNet.Downloader):
+
+    def __init__(self):
+        self.publisher = None
+
     def addDownloadTask(self, link, current = None):
         print("Peticion de descarga: %s" %link)
         sys.stdout.flush()
         fileInfo = TrawlNet.FileInfo()
         fileInfo.name = download_mp3(link)
-        #file.hash = metodo que nos tienen que pasar
+        #fileInfo.hash = hashlib.new("md5",link) # HAY QUE ECHARLE UN BUENO OJO A ESTO
+        fileInfo.hash = "25"
+        self.publisher.newFile(fileInfo)
         return fileInfo
 
 # Servidor
@@ -75,10 +86,20 @@ class Downloader(Ice.Application):
             print("property", key,"not set")
             return None
         
-        print("Using IceStorm in: '%s'" % key)
+        print("Using IceStorm in: '%s'" % key) ### ESTO HABRÁ QUE QUITARLO POR EL SCRIPT!!!!!
         return IceStorm.TopicManagerPrx.checkedCast(proxy)
     
     def run(self, args):
+        self.broker = self.communicator() 
+        self.sirviente = DownloaderI()
+        self.adapter = self.broker.createObjectAdapter("DownloaderAdapter")
+        self.proxy = self.adapter.addWithUUID(self.sirviente)
+        
+        # Imprimimos el proxy del downloader, lo necesita el orchestrator por parametros.        
+        print(self.proxy) 
+        sys.stdout.flush()
+        self.adapter.activate()
+        
         ## CÓDIGO PUBLISHER
         topic_mgr = self.get_topic_manager()
         if not topic_mgr:
@@ -92,22 +113,10 @@ class Downloader(Ice.Application):
             print("No such topic found, creating")
             topic = topic_mgr.create(topic_name)
 
-        self.publisher = topic.getPublisher()
-        self.updateEvent = TrawlNet.UpdateEventPrx.uncheckedCast(self.publisher) ## DUDAS
-    
-        #AQUI DEBERÍA DE IR EL CODIGO LLAMANDO A LA FUNCION DE LA INTERFAZ CREO     
-        self.updateEvent.newFile(hay que pasarle un fileInfo)
-
-        #NO SE SI ESTO SIGUE ASÍ
-        self.broker = self.communicator() 
-        self.sirviente = DownloaderI()
-
-        self.adapter = self.broker.createObjectAdapter("DownloaderAdapter")
-        self.proxy = self.adapter.addWithUUID(self.sirviente)
-        #self.proxy = self.adapter.add(self.sirviente, self.broker.stringToIdentity("downloader1"))
-        print(self.proxy)
-        sys.stdout.flush()
-        self.adapter.activate()
+        publisher_event = topic.getPublisher() # Se obtiene un publicador
+        updateEvent = TrawlNet.UpdateEventPrx.uncheckedCast(publisher_event) 
+        self.sirviente.publisher = updateEvent
+        # El publisher de DownloaderI sera updateEvent, ya que luego invoca al método newFile
 				
         self.shutdownOnInterrupt()
         self.broker.waitForShutdown()

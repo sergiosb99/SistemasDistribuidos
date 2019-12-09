@@ -17,16 +17,19 @@ class Client(Ice.Application):
         try:
             link = argv[2]
         except IndexError:
-            print("No has indicado un link de descarga valido")
-            return 1
+            print("No has indicado un link de descarga valido, por tanto se procede al getFileList")
+            link = None # No se va a realizar el proceso de descarga
 
         orchestrator = TrawlNet.OrchestratorPrx.checkedCast(proxy)        
         if not orchestrator:
             raise RuntimeError("Proxy invalido: %s" %argv[1])
         
         print("Link de descarga: %s" % link)
-        orchestrator.downloadTask(link)
-        print("Archivo descargado correctamente")      
+        if link:
+            orchestrator.downloadTask(link)
+            print("Archivo descargado correctamente")      
+        else:
+            orchestrator.getFileList() # Por pulir      
         return 0
 
 client = Client()
