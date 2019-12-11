@@ -19,16 +19,13 @@ except ImportError:
 
 class NullLogger:
     def debug(self, msg):
-        #print(msg)
         pass
 
     def warning(self, msg):
-        #print(msg)
         pass
 
 
     def error(self, msg):
-        #print(msg)
         pass
 
 _YOUTUBEDL_OPTS_ = {
@@ -66,16 +63,29 @@ class DownloaderI(TrawlNet.Downloader):
 
     def __init__(self):
         self.publisher = None
+    
+    def computeHash(filename):
+        '''SHA256 hash of a file'''
+        fileHash = hashlib.sha256()
+        with open(filename, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                fileHash.update(chunk)
+            return fileHash.hexdigest()
 
-    def addDownloadTask(self, link, current = None):
-        print("Peticion de descarga: %s" %link)
-        sys.stdout.flush()
-        fileInfo = TrawlNet.FileInfo()
-        fileInfo.name = download_mp3(link)
-        #fileInfo.hash = hashlib.new("md5",link) # HAY QUE ECHARLE UN BUENO OJO A ESTO
-        fileInfo.hash = "25"
-        self.publisher.newFile(fileInfo)
-        return fileInfo
+    def addDownloadTask(self, link, current = None): ## TRY EXCEPT
+        try:
+            print("Peticion de descarga: %s" %link)
+            sys.stdout.flush()
+            fileInfo = TrawlNet.FileInfo()
+            fileInfo.name = download_mp3(link)
+            #fileInfo.hash = hashlib.new("md5",link) # HAY QUE ECHARLE UN BUENO OJO A ESTO
+            fileInfo.hash = computeHash("HOLA")
+            self.publisher.newFile(fileInfo)
+            return fileInfo
+        except TrawlNet.DownloadError:
+            print("Error en la descarga")
+            return 1
+
 
 # Servidor
 class Downloader(Ice.Application):

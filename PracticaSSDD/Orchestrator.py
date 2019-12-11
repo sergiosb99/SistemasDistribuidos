@@ -13,38 +13,61 @@ class OrchestratorI (TrawlNet.Orchestrator):
             print("No se conseguido asignar la descarga a un downloader")
             return 1
         else:
-            print("Peticion de descarga: %s" %link)
-            return self.downloader.addDownloadTask(link)
+            try:
+                print("Peticion de descarga: %s" %link)
+                return self.downloader.addDownloadTask(link)
+            except TrawlNet.DownloadError: 
+                printf("Error al llevar a cabo la descarga")
+                return 1
 
-    def announce(self, other, current = None): 
+    def announce(self, other, current = None): ## no se como hacerlo
         pass
 
-    def getFileList():
-        pass
+    def getFileList(): ## OJALA PUDIERA PROBARLO
+        lista = []
+        
+        for fileHash in self.files:
+            fileInfo = TrawlNet.FileInfo()
+            fileInfo.hash = fileHash
+            fileInfo.name = self.files[fileHash]
+            lista.append(fileInfo)
 
-class OrchestratorEventI (TrawlNet.OrchestratorEvent):
-    
-    def __init__(self):
-        self.publisher = None
+        return lista
+
+class OrchestratorEventI (TrawlNet.OrchestratorEvent):     
+    #def __init__(self):        
+    #    self.orchestrator = None
+    #    self.lista
+    #    self.anunciador = None
+    #    self.proxy = None
+    orchestrator = None
+    anunciador = None
+    proxy = None
+    lista = None
 
     def hello(self, me, current = None):
-            print("HE LLEGAO PAYO")
-            #if self.publisher:
-                #self.publisher.saludar(me) # Por pulir
+        if me.ice_toString() in self.lista:
+            return
+        print("Se ha registrado un nuevo orchestrator: ", me)
+        self.lista.append(me)
+        # Mandamos la referencia al nuevo orquestador
+        other = TrawlNet.OrchestratorPrx.uncheckedCast(self.proxy)
+        self.anunciador.announce(other) # ¿checked en vez de unchecked?
 
 class UpdateEventI (TrawlNet.UpdateEvent):   
-    orchestrator = None # A lo mejor meterlo en un init
+    orchestrator = None # A lo mejor meterlo en un init  
     def newFile(self, fileInfo, current = None):
         print("Nuevo evento registrado")
         if self.orchestrator:
             if fileInfo.hash not in self.orchestrator.files:
                 self.orchestrator.files[fileInfo.hash] = fileInfo.name
 
+
 class Orchestrator (Ice.Application):
 
     def __init__(self):
         self.files = {}
-        self.orchestrator = {}
+        self.orchestrators = []
 
     def get_topic_manager(self):
         key = 'IceStorm.TopicManager.Proxy'
@@ -58,38 +81,41 @@ class Orchestrator (Ice.Application):
     
     def run(self, argv):
          
-        self.broker = self.communicator()
+        broker = self.communicator()
 
         # Se obtiene el proxy del Downloader al que conectarse por parametros
-        self.proxyDownloader = self.broker.stringToProxy(argv[1])
-        self.downloader = TrawlNet.DownloaderPrx.checkedCast(self.proxyDownloader)
+        proxyDownloader = broker.stringToProxy(argv[1])
+        downloader = TrawlNet.DownloaderPrx.checkedCast(proxyDownloader)
 
-        if not self.downloader:
+        if not downloader:
             return ValueError("Proxy invalido: %s" %argv[1])
         
         ### Interfaz del orchestrator para realizar la descarga mp3
-        self.sirviente = OrchestratorI()
-        self.sirviente.downloader = self.downloader
+        sirviente = OrchestratorI()
+        sirviente.downloader = downloader
         
         ### Interfaz del canal de eventos UpdateEvent
-        self.sirvienteUpdate = UpdateEventI()
-        self.sirvienteUpdate.orchestrator = self # El orchestrator soy "yo"
+        sirvienteUpdate = UpdateEventI()
+        sirvienteUpdate.orchestrator = self # El orchestrator soy "yo"
         
         ### Interfaz del canal de eventos del Orchestrator
-        self.sirvienteOrchestrator = OrchestratorEventI()
-        self.sirvienteOrchestrator.orchestrator = self # soy yo mismo
-        
+        sirvienteOrchestrator = OrchestratorEventI()
+        sirvienteOrchestrator.orchestrator = self # soy yo mismo ##### AQUÍ PODRIA ESTAR EL FALLO OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOJO
+        sirvienteOrchestrator.lista = self.orchestrators
+        sirvienteOrchestrator.anunciador = sirviente ##### DUDAS
         # Se obtiene el adaptador
-        self.adaptador = self.broker.createObjectAdapter("OrchestratorAdapter")
+        adaptador = broker.createObjectAdapter("OrchestratorAdapter")
 
         # Ahora con el adaptador, conseguimos los proxys necesarios
-        self.proxyOrchestrator = self.adaptador.addWithUUID(self.sirviente) # Proxy del Orchestrator
-        self.subscriberUpdateEvent = self.adaptador.addWithUUID(self.sirvienteUpdate) # Proxy del UpdateEvent
-        self.publisherOrchestratorEvent = self.adaptador.addWithUUID(self.sirvienteOrchestrator) # Proxy del publicador del evento de orchestrator
-        ###### ¿HACE FALTA UN PROXY PARA EL SUBSCRIBER DEL EVENTOS DE ORQUESTADORES?
+        proxyOrchestrator = adaptador.addWithUUID(sirviente) # Proxy del Orchestrator
+        subscriberUpdateEvent = adaptador.addWithUUID(sirvienteUpdate) # Proxy del UpdateEvent
+        publisherOrchestratorEvent = adaptador.addWithUUID(sirvienteOrchestrator) # Proxy del publicador del evento de orchestrator
+
+        ######### NO ESTOY SEGURO DE ESTO
+        sirvienteOrchestrator.proxy = proxyOrchestrator
 
         # Imprimos el proxy del orquestador, lo necesita el cliente por parametros
-        print('Proxy orchestrator: %s' % self.proxyOrchestrator)
+        print('Proxy orchestrator: %s' % proxyOrchestrator)
                
         #################### SUBSCRIBER UPDATE EVENT ######################
         topic_mgr_update = self.get_topic_manager()
@@ -104,8 +130,23 @@ class Orchestrator (Ice.Application):
         except IceStorm.NoSuchTopic:
             topic_update = topic_mgr_update.create(topic_name_update)
 
-        topic_update.subscribeAndGetPublisher(qos_update,self.subscriberUpdateEvent)
+        topic_update.subscribeAndGetPublisher(qos_update,subscriberUpdateEvent)
+        
+        ################# SUBSCRIBER ORCHESTRATOR EVENT ###################
+        topic_mgr_subscriber = self.get_topic_manager()
+        if not topic_mgr_subscriber:
+            print('Proxy invalido')
+            return 2
 
+        topic_name_orchestrator = "OrchestratorSync"
+        qos_orchestrator = {}
+        try:
+            topic_orchestrator = topic_mgr_update.retrieve(topic_name_orchestrator)
+        except IceStorm.NoSuchTopic:
+            topic_orchestrator = topic_mgr_update.create(topic_name_orchestrator)
+
+        topic_orchestrator.subscribeAndGetPublisher(qos_orchestrator,publisherOrchestratorEvent) # REVISAR ULTIMA VARIABLE
+        
         ################## PUBLISHER ORCHESTRATOR EVENT ###################
         topic_mgr_publisher = self.get_topic_manager()
         if not topic_mgr_publisher:
@@ -121,33 +162,17 @@ class Orchestrator (Ice.Application):
 
         publisher_event = topic_publisher.getPublisher()
         orchestratorEvent = TrawlNet.OrchestratorEventPrx.uncheckedCast(publisher_event)
-        
-        orchestratorEvent.hello(self.sirvienteOrchestrator.orchestrator) # CREO QUE SELF SOY YO
-        #self.sirvienteOrchestrator.publisher = orchestratorEvent
-
-        ################# SUBSCRIBER ORCHESTRATOR EVENT ###################
-        topic_mgr_subscriber = self.get_topic_manager()
-        if not topic_mgr_subscriber:
-            print('Proxy invalido')
-            return 2
-
-        topic_name_orchestrator = "OrchestratorSync"
-        qos_orchestrator = {}
-        try:
-            topic_orchestrator = topic_mgr_update.retrieve(topic_name_orchestrator)
-        except IceStorm.NoSuchTopic:
-            topic_orchestrator = topic_mgr_update.create(topic_name_orchestrator)
-
-        topic_orchestrator.subscribeAndGetPublisher(qos_orchestrator,self.publisherOrchestratorEvent) # REVISAR ULTIMA VARIABLE
-
+        sirvienteOrchestrator.orchestrator = orchestratorEvent
+        me = TrawlNet.OrchestratorPrx.uncheckedCast(proxyOrchestrator)
+        orchestratorEvent.hello(me)
         ####################################################################
 
-        self.adaptador.activate()
+        adaptador.activate()
         self.shutdownOnInterrupt()
-        self.broker.waitForShutdown()
+        broker.waitForShutdown()
 
-        topic_update.unsubscribe(self.subscriberUpdateEvent)
-        topic_orchestrator.unsubscribe(self.publisherOrchestratorEvent) # REVISAR VARIABLE
+        topic_update.unsubscribe(subscriberUpdateEvent)
+        topic_orchestrator.unsubscribe(publisherOrchestratorEvent) # REVISAR VARIABLE
 
         return 0
 

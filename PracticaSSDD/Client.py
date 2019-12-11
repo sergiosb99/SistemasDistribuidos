@@ -29,7 +29,11 @@ class Client(Ice.Application):
             orchestrator.downloadTask(link)
             print("Archivo descargado correctamente")      
         else:
-            orchestrator.getFileList() # Por pulir      
+            lista = orchestrator.getFileList() # Por pulir 
+            print("Archivos disponibles:")
+            for i in range(len(lista)):
+                print(lista[i])
+                
         return 0
 
 client = Client()
