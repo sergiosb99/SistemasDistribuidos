@@ -8,6 +8,9 @@ import TrawlNet
 
 class OrchestratorI (TrawlNet.Orchestrator):
     downloader = None
+    files = None
+    orchestrators = []
+
     def downloadTask(self, link, current = None):
         if self.downloader is None:
             print("No se conseguido asignar la descarga a un downloader")
@@ -21,9 +24,15 @@ class OrchestratorI (TrawlNet.Orchestrator):
                 return 1
 
     def announce(self, other, current = None): ## no se como hacerlo
-        pass
+        print("Respuesta orchestrator: ", other)
 
-    def getFileList(): ## OJALA PUDIERA PROBARLO
+        #if other not in self.files:
+        #    self.orchestrators.append(other)
+
+        for i in range(len(self.orchestrators)):
+                print(self.orchestrators[i])
+
+    def getFileList(self, current = None): 
         lista = []
         
         for fileHash in self.files:
@@ -52,7 +61,7 @@ class OrchestratorEventI (TrawlNet.OrchestratorEvent):
         self.lista.append(me)
         # Mandamos la referencia al nuevo orquestador
         other = TrawlNet.OrchestratorPrx.uncheckedCast(self.proxy)
-        self.anunciador.announce(other) # ¿checked en vez de unchecked?
+        self.anunciador.announce(other)
 
 class UpdateEventI (TrawlNet.UpdateEvent):   
     orchestrator = None # A lo mejor meterlo en un init  
@@ -61,6 +70,8 @@ class UpdateEventI (TrawlNet.UpdateEvent):
         if self.orchestrator:
             if fileInfo.hash not in self.orchestrator.files:
                 self.orchestrator.files[fileInfo.hash] = fileInfo.name
+            else:
+                print("El archivo descargado ya estaba con anterioridad")
 
 
 class Orchestrator (Ice.Application):
@@ -93,6 +104,8 @@ class Orchestrator (Ice.Application):
         ### Interfaz del orchestrator para realizar la descarga mp3
         sirviente = OrchestratorI()
         sirviente.downloader = downloader
+        sirviente.files = self.files
+        sirviente.orchestrators = self.orchestrators
         
         ### Interfaz del canal de eventos UpdateEvent
         sirvienteUpdate = UpdateEventI()
@@ -100,7 +113,7 @@ class Orchestrator (Ice.Application):
         
         ### Interfaz del canal de eventos del Orchestrator
         sirvienteOrchestrator = OrchestratorEventI()
-        sirvienteOrchestrator.orchestrator = self # soy yo mismo ##### AQUÍ PODRIA ESTAR EL FALLO OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOJO
+        sirvienteOrchestrator.orchestrator = self 
         sirvienteOrchestrator.lista = self.orchestrators
         sirvienteOrchestrator.anunciador = sirviente ##### DUDAS
         # Se obtiene el adaptador
