@@ -90,11 +90,20 @@ class Orchestrator (Ice.Application):
     def run(self, argv):
 
         broker = self.communicator()
-        proxyDownloader = broker.stringToProxy(argv[1])
-        downloader = TrawlNet.DownloaderPrx.checkedCast(proxyDownloader)
+        try:
+            proxyDownloader = broker.stringToProxy(argv[1])
+        except IndexError:
+            print("Error, you have not indicated a proxy.")
+            return 1
+        except:
+            print("Error, you have not indicated a valid proxy.")
+            return 1
 
-        if not downloader:
-            return ValueError("Invalid proxy: %s" %argv[1])
+        try:
+            downloader = TrawlNet.DownloaderPrx.checkedCast(proxyDownloader)
+        except Ice.NoEndpointException:
+            print("Error, the proxy is not valid.")
+            return 1
 
         ### Interfaz del orchestrator para realizar la descarga mp3
         servant = OrchestratorI()
@@ -144,6 +153,13 @@ class Orchestrator (Ice.Application):
 
         topic_update.subscribeAndGetPublisher(qos_update,proxyUpdateEvent)
 
+        ###################### PUBLISHER UPDATE EVENT ################################
+        # Se usa para sincronizar la lista de archivos de un orchestrator nuevo
+
+        publisher_update_event = topic_update.getPublisher()
+        publisherUpdateEvent = TrawlNet.UpdateEventPrx.uncheckedCast(publisher_update_event)
+        servantOrchestrator.publisher = publisherUpdateEvent
+
         ####################### SUBSCRIBER ORCHESTRATOR EVENT ########################
         # Los orchestrators subscritos son informados de llegadas de nuevos
 
@@ -159,30 +175,11 @@ class Orchestrator (Ice.Application):
         ####################### PUBLISHER ORCHESTRATOR EVENT #########################
         # Se notifica la llegada de un nuevo orchestrator
 
-        #try:
-        #    topic_publisher = topic_mgr.retrieve(topic_orchestrator_event)
-        #except IceStorm.NoSuchTopic:
-        #    print("No such topic found, creating")
-        #    topic_publisher = topic_mgr.create(topic_orchestrator_event)
-
         publisher_event = topic_orchestrator.getPublisher()
         orchestratorEvent = TrawlNet.OrchestratorEventPrx.uncheckedCast(publisher_event)
         servantOrchestrator.orchestrator = orchestratorEvent
         me = TrawlNet.OrchestratorPrx.uncheckedCast(proxyOrchestrator)
         orchestratorEvent.hello(me)
-
-        ###################### PUBLISHER UPDATE EVENT ################################
-        # Se usa para sincronizar la lista de archivos de un orchestrator nuevo
-
-        #try:
-        #    topic_update_publisher = topic_mgr.retrieve(topic_update_event)
-        #except IceStorm.NoSuchTopic:
-        #    print("No such topic found, creating")
-        #    topic_update_publisher = topic_mgr.create(topic_update_event)
-
-        publisher_update_event = topic_update.getPublisher()
-        publisherUpdateEvent = TrawlNet.UpdateEventPrx.uncheckedCast(publisher_update_event)
-        servantOrchestrator.publisher = publisherUpdateEvent
 
         self.shutdownOnInterrupt()
         broker.waitForShutdown()

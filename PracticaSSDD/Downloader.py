@@ -22,7 +22,6 @@ class NullLogger:
     def warning(self, msg):
         pass
 
-
     def error(self, msg):
         pass
 

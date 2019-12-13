@@ -13,7 +13,10 @@ class Client(Ice.Application):
         try:
             proxy = self.communicator().stringToProxy(argv[1])
         except IndexError:
-            print("The proxy is not valid.")
+            print("Error, you have not indicated a proxy.")
+            return 1
+        except:
+            print("Error, you have not indicated a valid proxy.")
             return 1
         
         try:
@@ -21,9 +24,14 @@ class Client(Ice.Application):
         except IndexError:
             link = None # No se va a realizar el proceso de descarga
 
-        orchestrator = TrawlNet.OrchestratorPrx.checkedCast(proxy) # Try Catch  
-        if not orchestrator:
-            raise RuntimeError("Invalid proxy: %s" %argv[1])
+        try:
+            orchestrator = TrawlNet.OrchestratorPrx.checkedCast(proxy)  
+        except Ice.NoEndpointException:
+            print("Error, the proxy is not valid.")
+            return 1
+        except Ice.ConnectionRefusedException:
+            print("Error, you have entered a proxy not available.")
+            return 1
                
         if link:
             print("Download link: %s" % link)
