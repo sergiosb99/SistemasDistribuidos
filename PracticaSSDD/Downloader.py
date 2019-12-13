@@ -2,15 +2,14 @@
 # -*- coding: utf-8 -*-
 
 import sys
-import Ice
+import Ice, IceStorm
 Ice.loadSlice('trawlnet.ice')
 import TrawlNet
-
-####################### CODIGO CAMPUS #######################
+import hashlib
 
 try:
     import youtube_dl
-    import os # Añadido al material del campus, si no, no funciona.
+    import os
 except ImportError:
     print('ERROR: do you have installed youtube-dl library?')
     sys.exit(1)
@@ -54,29 +53,77 @@ def download_mp3(url, destination='./'):
     filename = filename[:filename.rindex('.') + 1]
     return filename + options['postprocessors'][0]['preferredcodec']
 
-#############################################################
 
-# Sirviente
+def computeHash(filename):
+    '''SHA256 hash of a file'''
+    fileHash = hashlib.sha256()
+    with open(filename, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            fileHash.update(chunk)
+        return fileHash.hexdigest()
+
 class DownloaderI(TrawlNet.Downloader):
-    def addDownloadTask(self, link, current = None):
-        print("Peticion de descarga: %s" %link)
-        sys.stdout.flush()
-        return download_mp3(link) 
 
-# Servidor
+    def __init__(self):
+        self.publisher = None
+    
+    def addDownloadTask(self, link, current = None): 
+        try:
+            print("Download request: %s" %link)
+            sys.stdout.flush()
+            fileInfo = TrawlNet.FileInfo()
+            fileInfo.name = download_mp3(link)
+            fileInfo.hash = computeHash(fileInfo.name)
+            self.publisher.newFile(fileInfo)
+            return fileInfo
+        except TrawlNet.DownloadError:
+            print("Download failed")
+            return 1
+
 class Downloader(Ice.Application):
+    
+    def get_topic_manager(self):
+        key = 'IceStorm.TopicManager.Proxy'
+        proxy = self.communicator().propertyToProxy(key)
+        if proxy is None:
+            print("property", key,"not set")
+            return None
+        
+        return IceStorm.TopicManagerPrx.checkedCast(proxy)
+    
     def run(self, args):
-        broker = self.communicator() 
-        sirviente = DownloaderI()
-
-        adapter = broker.createObjectAdapter("DownloaderAdapter")
-        proxy = adapter.addWithUUID(sirviente)	
-        print(proxy)
+        
+        self.broker = self.communicator() 
+        self.sirviente = DownloaderI()
+        self.adapter = self.broker.createObjectAdapter("DownloaderAdapter")
+        self.proxy = self.adapter.addWithUUID(self.sirviente)
+        
+        print(self.proxy) 
         sys.stdout.flush()
-        adapter.activate()
+        self.adapter.activate()
+
+        ###### PUBLISHER UPDATE EVENT #######
+        # Notifica de la descarga de archivos
+        
+        topic_mgr = self.get_topic_manager()
+        if not topic_mgr:
+            print('Invalid Proxy')
+            return 2
+        
+        topic_name = "UpdateEvents"
+        try:
+            topic = topic_mgr.retrieve(topic_name)
+        except IceStorm.NoSuchTopic:
+            print("No such topic found, creating")
+            topic = topic_mgr.create(topic_name)
+
+        publisher_event = topic.getPublisher()
+        updateEvent = TrawlNet.UpdateEventPrx.uncheckedCast(publisher_event) 
+        self.sirviente.publisher = updateEvent
 				
         self.shutdownOnInterrupt()
-        broker.waitForShutdown()
+        self.broker.waitForShutdown()
+        
         return 0
 
 downloader = Downloader()

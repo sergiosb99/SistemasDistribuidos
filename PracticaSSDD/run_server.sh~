@@ -1,0 +1,14 @@
+#!/bin/bash
+#
+
+python3 Downloader.py --Ice.Config=Downloader.config > downloaderproxy &
+PID=$!
+
+sleep 1
+echo "Downloader: $(cat $downloaderproxy)"
+
+python3 Orchestrator.py --Ice.Config=Orchestrator.config "$(head -1 downloaderproxy)"
+kill -9 $PID
+
+echo "Shoutting down..."
+rm $downloaderproxy
