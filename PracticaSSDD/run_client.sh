@@ -1,3 +1,8 @@
-#!/bin/bash
+#!/bin/sh
+#
 
-./Client.py "$1" "$2"
+PYTHON=python3
+
+CLIENT_CONFIG=Orchestrator.config
+
+$PYTHON Client.py --Ice.Config=$CLIENT_CONFIG "$1" "$2"
