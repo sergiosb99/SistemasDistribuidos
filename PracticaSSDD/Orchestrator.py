@@ -4,11 +4,14 @@
 import sys
 import Ice, IceStorm
 Ice.loadSlice('trawlnet.ice')
+Ice.IPv6 = 0
+Ice.IPv4 = 1
 import TrawlNet
 
-class OrchestratorI (TrawlNet.Orchestrator):
-    
+class OrchestratorI(TrawlNet.Orchestrator):
+  
     downloader = None
+    transfer = None
     files = None
     orchestrators = []
 
@@ -19,7 +22,10 @@ class OrchestratorI (TrawlNet.Orchestrator):
         else:
             try:
                 print("Download request: %s" %link)
-                return self.downloader.addDownloadTask(link)
+                proxyDownloader = self.downloader.create() 
+                fichero = proxyDownloader.addDownloadTask(link)
+                proxyDownloader.destroy()
+                return fichero
             except TrawlNet.DownloadError:
                 printf("Error downloading.")
                 return 1
@@ -41,7 +47,18 @@ class OrchestratorI (TrawlNet.Orchestrator):
 
         return fileList
 
-class OrchestratorEventI (TrawlNet.OrchestratorEvent):
+    def getFile(self, name, current = None):
+        if self.transfer is None:
+            print("Failed to assign the download to any Transfer.")
+            return 1
+        else:
+            try:
+                return self.transfer.create()
+            except:
+                print("Error.")
+                return 1
+
+class OrchestratorEventI(TrawlNet.OrchestratorEvent):
 
     proxy = None
     orchestrators = None
@@ -63,7 +80,7 @@ class OrchestratorEventI (TrawlNet.OrchestratorEvent):
         other = TrawlNet.OrchestratorPrx.uncheckedCast(self.proxy) 
         me.announce(other)
 
-class UpdateEventI (TrawlNet.UpdateEvent):
+class UpdateEventI(TrawlNet.UpdateEvent):
 
     orchestrator = None
 
@@ -72,7 +89,7 @@ class UpdateEventI (TrawlNet.UpdateEvent):
             if fileInfo.hash not in self.orchestrator.files:
                 self.orchestrator.files[fileInfo.hash] = fileInfo.name
 
-class Orchestrator (Ice.Application):
+class Orchestrator(Ice.Application):
 
     def __init__(self):
         self.files = {}
@@ -92,6 +109,7 @@ class Orchestrator (Ice.Application):
         broker = self.communicator()
         try:
             proxyDownloader = broker.stringToProxy(argv[1])
+            print(proxyDownloader)
         except IndexError:
             print("Error, you have not indicated a proxy.")
             return 1
@@ -100,7 +118,8 @@ class Orchestrator (Ice.Application):
             return 1
 
         try:
-            downloader = TrawlNet.DownloaderPrx.checkedCast(proxyDownloader)
+            downloader = TrawlNet.DownloaderFactoryPrx.checkedCast(proxyDownloader)
+            print(downloader)
         except Ice.NoEndpointException:
             print("Error, the proxy is not valid.")
             return 1
@@ -151,7 +170,7 @@ class Orchestrator (Ice.Application):
             print("No such topic found, creating")
             topic_update = topic_mgr.create(topic_update_event)
 
-        topic_update.subscribeAndGetPublisher(qos_update,proxyUpdateEvent)
+        topic_update.subscribeAndGetPublisher(qos_update, proxyUpdateEvent)
 
         ###################### PUBLISHER UPDATE EVENT ################################
         # Se usa para sincronizar la lista de archivos de un orchestrator nuevo
@@ -170,16 +189,16 @@ class Orchestrator (Ice.Application):
         except IceStorm.NoSuchTopic:
             topic_orchestrator = topic_mgr.create(topic_orchestrator_event)
 
-        topic_orchestrator.subscribeAndGetPublisher(qos_orchestrator,proxyOrchestratorEvent)
+        topic_orchestrator.subscribeAndGetPublisher(qos_orchestrator, proxyOrchestratorEvent)
 
         ####################### PUBLISHER ORCHESTRATOR EVENT #########################
         # Se notifica la llegada de un nuevo orchestrator
 
         publisher_event = topic_orchestrator.getPublisher()
-        orchestratorEvent = TrawlNet.OrchestratorEventPrx.uncheckedCast(publisher_event)
-        servantOrchestrator.orchestrator = orchestratorEvent
+        orchestrator_event = TrawlNet.OrchestratorEventPrx.uncheckedCast(publisher_event)
+        servantOrchestrator.orchestrator = orchestrator_event
         me = TrawlNet.OrchestratorPrx.uncheckedCast(proxyOrchestrator)
-        orchestratorEvent.hello(me)
+        orchestrator_event.hello(me)
 
         self.shutdownOnInterrupt()
         broker.waitForShutdown()

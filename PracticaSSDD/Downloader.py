@@ -4,6 +4,8 @@
 import sys
 import Ice, IceStorm
 Ice.loadSlice('trawlnet.ice')
+Ice.IPv6=0
+Ice.IPv4=1
 import TrawlNet
 import hashlib
 
@@ -80,6 +82,23 @@ class DownloaderI(TrawlNet.Downloader):
             print("Download failed")
             return 1
 
+    def destroy(self, current):
+        try:
+            current.adapter.remove(current.id)
+            print('DOWNLOADER DESTROYED', flush=True)
+        except Exception as e:
+            print(e, flush=True)
+
+class DownloaderFactoryI(TrawlNet.DownloaderFactory):
+    publisher = None
+    def create(self, current): # EL ORCHESTRATOR INVOCA ESTE METODO, Y ESTA INTERFAZ LE DEVUELVE UN DOWNLOADER, AL CUAL EL ORCHESTRATOR DEBE MANDAR LA PETICION DE DESCARGA
+        servant = DownloaderI()
+        servant.publisher = self.publisher
+        proxy = current.adapter.addWithUUID(servant)
+        print('# New Downloader with proxy:', proxy, flush=True)
+
+        return TrawlNet.DownloaderPrx.checkedCast(proxy)
+
 class Downloader(Ice.Application):
     
     def get_topic_manager(self):
@@ -94,9 +113,9 @@ class Downloader(Ice.Application):
     def run(self, args):
         
         self.broker = self.communicator() 
-        self.sirviente = DownloaderI()
+        self.sirvienteFactory = DownloaderFactoryI() #DownloaderI()
         self.adapter = self.broker.createObjectAdapter("DownloaderAdapter")
-        self.proxy = self.adapter.addWithUUID(self.sirviente)
+        self.proxy = self.adapter.addWithUUID(self.sirvienteFactory)
         
         print(self.proxy) 
         sys.stdout.flush()
@@ -119,7 +138,7 @@ class Downloader(Ice.Application):
 
         publisher_event = topic.getPublisher()
         updateEvent = TrawlNet.UpdateEventPrx.uncheckedCast(publisher_event) 
-        self.sirviente.publisher = updateEvent
+        self.sirvienteFactory.publisher = updateEvent
 				
         self.shutdownOnInterrupt()
         self.broker.waitForShutdown()
